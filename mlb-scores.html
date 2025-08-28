@@ -1,0 +1,1851 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MLB Scores</title>
+  <style>
+    html, body { height: 100%; margin: 0; background: #1a1a1a; color: #fff; }
+    body { display: grid; place-items: center; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+
+    :root { --row-h: 76px; --font-size: 20px; }
+
+    .console-screen {
+      width: 100vmin;
+      height: 100vmin;
+      max-width: 640px;
+      max-height: 640px;
+      /* border-radius: 8px; */
+      background: #000;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 1fr;
+      /* border: 8px solid #333; */
+    }
+
+    .header { display: none; }
+
+    .ticker {
+      position: relative;
+      overflow: hidden;
+      height: 100%;
+    }
+
+    .list {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      will-change: transform;
+    }
+
+    .card {
+      display: grid;
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto;
+      gap: 8px;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px dashed #1f1f1f;
+      font-size: var(--font-size);
+      height: var(--row-h);
+      box-sizing: border-box;
+    }
+    .team { display: none; }
+    .abbr { display: none; }
+    .name { display: none; }
+    .score { display: none; }
+    .scoreline { font-weight: 900; font-size: calc(var(--font-size) + 6px); text-align: center; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: center; gap: 0; }
+    .scoreline .teamcell { display: inline-flex; width: clamp(40px, calc(var(--row-h) - 28px), 64px); align-items: center; justify-content: center; }
+    .scoreline .scorebox { display: inline-block; width: 2ch; text-align: center; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+    .scoreline .sepbox { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; width: 1.8ch; text-align: center; font-variant-numeric: tabular-nums; letter-spacing: 0; line-height: 1; }
+    .scoreline .sepbox.top .sep-arrow { order: 1; margin-bottom: 1px; }
+    .scoreline .sepbox.top .sep-inning { order: 2; }
+    .scoreline .sepbox.bottom .sep-inning { order: 1; }
+    .scoreline .sepbox.bottom .sep-arrow { order: 2; margin-top: 1px; }
+    .scoreline .sep-arrow { font-size: 0.30em; line-height: 0.82; color: #34d399; }
+    .scoreline .sep-inning { font-size: 0.50em; line-height: 0.9; color: #9aa4af; font-weight: 700; }
+    .scoreline .sep-dash { font-size: 0.62em; line-height: 1; color: #9aa4af; }
+    .scoreline .teamcell .abbrpill { margin: 0; }
+    .scoreline img.team-logo { height: clamp(28px, calc(var(--row-h) - 36px), 64px); max-width: 100%; width: auto; margin: 0 0; vertical-align: middle; filter: drop-shadow(0 0 0.3px rgba(255,255,255,0.5)) }
+    .abbrpill { display: inline-block; padding: 2px 8px; border-radius: 6px; font-weight: 800; margin: 0 4px; vertical-align: middle; }
+    .center-col { display: none; }
+    .subtext { grid-column: 1 / -1; color: #e5e7eb; font-size: calc(var(--font-size) - 4px); text-align: center; white-space: nowrap; text-overflow: ellipsis; line-height: 1.1; margin-top: -8px; font-weight: 700; }
+    .subtext.live { color: #34d399; }
+    .subtext.final { color: #cbd5e1; }
+    .subtext.delayed { color: #fbbf24; }
+    .subtext.postponed { color: #f87171; }
+    /* Ensure bases stay centered with outs and pitch flanking */
+    .subtext.live { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; justify-items: center; }
+    .subtext.live .outs { grid-column: 1; justify-self: end; }
+    .subtext.live .bases { grid-column: 2; justify-self: center; }
+    .subtext.live .pitch-count { grid-column: 3; justify-self: start; }
+    .meta { display: none; }
+
+    /* Bases indicator */
+    .bases { display: inline-grid; grid-template-columns: repeat(3, 0.50em); grid-template-rows: repeat(3, 0.50em); gap: 0; margin: 0; vertical-align: middle; align-items: center; justify-items: center; }
+    .bases .base { width: 0.62em; height: 0.62em; transform: rotate(45deg); border: 1px solid #9aa4af; background: #000; box-sizing: border-box; border-radius: 1px; }
+    .bases .base.on { background: #facc15; border-color: #c9ab0e; box-shadow: 0 0 2px rgba(250, 204, 21, 0.6); }
+    /* Place bases to form a diamond: 2B top-center, 3B left-mid, 1B right-mid */
+    .bases .base.second { grid-row: 1; grid-column: 2; }
+    .bases .base.third  { grid-row: 2; grid-column: 1; }
+    .bases .base.first  { grid-row: 2; grid-column: 3; }
+
+    /* Live metadata */
+    .outs { margin-right: 6px; color: #cbd5e1; font-weight: 700; display: inline-flex; align-items: baseline; gap: 2px; }
+    .outs .outs-num { font-size: 0.75em; line-height: 1; color: #e5e7eb; font-weight: 800; }
+    .outs .outs-label { font-size: 0.60em; line-height: 1; color: #cbd5e1; font-weight: 700; }
+    .pitch-count { margin-left: 6px; color: #9aa4af; font-variant-numeric: tabular-nums; font-weight: 700; font-size: 0.75em; }
+
+    /* Config UI */
+    .config-container {
+      display: none;
+      max-width: 640px;
+      width: 92%;
+      background: #2a2a2a;
+      border-radius: 12px;
+      padding: 20px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+    .config-container.show { display: block; }
+    .config-title { font-size: 20px; font-weight: 600; margin-bottom: 12px; text-align: center; }
+    .config-title .mlb-logo { height: 20px; width: auto; vertical-align: middle; margin-right: 8px; }
+    .controls { display: flex; gap: 8px; flex-wrap: nowrap; justify-content: center; align-items: center; margin-bottom: 12px; overflow-x: auto; }
+    .control-label { width: auto; flex: 0 0 auto; text-align: center; color: #cbd5e1; font-size: 13px; margin: 0 8px 0 0; font-weight: 600; letter-spacing: 0.2px; white-space: nowrap; display: inline-flex; align-items: center; }
+    .search { background: #1f1f1f; color: #eee; border: 1px solid #3a3a3a; border-radius: 8px; padding: 8px 10px; width: 100%; max-width: 360px; }
+    .teams { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; max-height: 50vh; overflow: auto; padding-right: 4px; }
+    .team-item { background: #383838; border: 1px solid #444; border-radius: 8px; padding: 10px; display: flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
+    .team-item input { margin: 0; }
+    .team-item:hover { background: #424242; }
+    .hint { color: #9aa4af; font-size: 12px; text-align: center; margin-top: 8px; }
+
+    .badge { display: inline-block; background: #1f2937; color: #cbd5e1; border: 1px solid #334155; border-radius: 999px; padding: 2px 8px; font-size: 11px; }
+
+    /* Team chips (button-style selection + per-team spoilers) */
+    .team-chip { display: flex; width: 100%; white-space: nowrap; }
+    .chip-select, .chip-spoiler { background: #383838; border: 1px solid #444; color: #eee; padding: 10px; cursor: pointer; }
+    .chip-select { display: flex; align-items: center; gap: 8px; flex: 1; border-radius: 8px 0 0 8px; border-right: 0; text-align: left; min-width: 0; }
+    .chip-spoiler { border-radius: 0 8px 8px 0; white-space: nowrap; }
+    /* Truncate long team names with ellipsis so row stays single-line */
+    .chip-select > span:last-child { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip-select:hover, .chip-spoiler:hover { background: #424242; }
+    .chip-select.selected { background: #4a90e2; border-color: #5ba0f2; color: #fff; }
+    .chip-select.selected .badge { background: #1f2937; color: #fff; border-color: #1f2937; }
+    .chip-spoiler.active { background: #374151; border-color: #4b5563; color: #fff; }
+
+    /* Drag handle for reordering teams */
+    .chip-drag { display: inline-flex; align-items: center; justify-content: center; width: 34px; user-select: none; cursor: grab; background: #2f2f2f; border: 1px solid #444; border-right: 0; border-radius: 8px 0 0 8px; }
+    .chip-drag:active { cursor: grabbing; }
+    /* When a drag handle is present, remove left radius from select button */
+    .team-chip .chip-select { border-radius: 0; border-left: 0; }
+    .team-chip.drag-over .chip-drag, .team-chip.drag-over .chip-select, .team-chip.drag-over .chip-spoiler { background: #4a4a4a; }
+
+    /* Medium layout for 320x320 — scale 240 design up 1.333x to preserve proportions */
+    @media ((min-width: 261px) and (max-width: 360px)), ((min-height: 261px) and (max-height: 360px)) {
+      :root { --row-h: 80px; --font-size: 18px; }
+      .console-screen {
+        width: 240px;
+        height: 240px;
+        transform: scale(1.3333333);
+        transform-origin: center;
+        /* border-width: 4px; */ /* scales to ~5.33px for visual parity */
+      }
+    }
+
+    /* Compact layout for 240x240 */
+    @media (max-width: 260px), (max-height: 260px) {
+      :root { --row-h: 80px; --font-size: 18px; }
+      .abbr { min-width: 32px; }
+      /* .console-screen { border-width: 4px; } */
+      .card { gap: 4px; padding: 8px 8px; }
+      .abbr { padding: 1px 6px; border-radius: 4px; }
+      .score { min-width: 22px; }
+    }
+
+    /* 640x640 — scale 240 design up 2.666x for exactly 3 visible rows */
+    @media (min-width: 600px) and (min-height: 600px) {
+      :root { --row-h: 80px; --font-size: 18px; }
+      .console-screen {
+        width: 240px;
+        height: 240px;
+        transform: scale(2.6666667);
+        transform-origin: center;
+        /* border-width: 4px; */ /* scales to ~10.67px for visual parity */
+      }
+    }
+    
+    /* Spoilers: hide numeric scores only (per-row) */
+    .card.hide-scores .scorebox { color: transparent; text-shadow: none; }
+  </style>
+</head>
+
+<body>
+  <div class="config-container" id="config-container">
+    <div class="config-title"><img class="mlb-logo" src="https://www.mlbstatic.com/team-logos/league-on-dark/1.svg" alt="MLB logo"> MLB Scores — Display Settings</div>
+    <!--div class="controls">
+      <div class="control-label">Animation</div>
+      <select id="anim-mode-select" class="search" style="max-width:160px">
+        <option value="continuous">Continuous</option>
+        <option value="step">Step per-row</option>
+      </select>
+      <div class="control-label">Speed</div>
+      <select id="anim-speed-select" class="search" style="max-width:160px">
+        <option value="slow">Slow</option>
+        <option value="normal">Normal</option>
+        <option value="fast">Fast</option>
+      </select>
+    </div-->
+    <!--div class="controls">
+      <div class="control-label">Timezone</div>
+      <select id="timezone-select" class="search" style="max-width:260px"></select>
+    </div-->
+    <!--div class="controls">
+      <div class="control-label">Game Scope</div>
+      <select id="scope-select" class="search" style="max-width:200px">
+        <option value="last">Last game</option>
+        <option value="today">Today only</option>
+        <option value="live">Live games only</option>
+      </select>
+      <div class="control-label">Game Order</div>
+      <select id="order-select" class="search" style="max-width:220px">
+        <option value="manual">Home Team (Manual)</option>
+        <option value="start">Start Time</option>
+        <option value="inning">Inning</option>
+        <option value="standings">Standings</option>
+      </select>
+    </div-->
+    <div class="controls">
+      <div class="control-label">Sort By Home Team</div>
+      <select id="home-team-select" class="search" style="max-width:360px"></select>
+    </div>
+    <div class="controls">
+      <input id="team-search" class="search" type="search" placeholder="Search teams (e.g. Yankees, NYY)" />
+    </div>
+    <div class="teams" id="teams-list"></div>
+    <div class="hint">Select teams to display. If none selected, all teams will be shown by default.</div>
+    <!--div class="controls" style="justify-content: center; margin-top: 12px;">
+      <button id="reset-btn" type="button">Reset to Defaults</button>
+    </div-->
+  </div>
+
+  <div class="console-screen" id="display" style="display:none;">
+    <div class="ticker" id="ticker">
+      <div class="list" id="list"></div>
+    </div>
+  </div>
+
+  <script>
+    const APP_VERSION = '0.1.0';
+    const STORAGE_TEAMS_KEY = 'mlb-selected-team-ids';
+    const STORAGE_ANIM_KEY = 'mlb-animation-mode';
+    const CHANNEL_NAME = 'mlb-score-sync';
+    const MLB_API_BASE = 'https://statsapi.mlb.com/api/v1';
+    const MLB_API_LIVE = 'https://statsapi.mlb.com/api/v1.1';
+    const REFRESH_MS = 60000;
+    let ROW_HEIGHT = getRowHeight(); // px per row in ticker (from CSS)
+    const ANIMATION_MODES = { CONTINUOUS: 'continuous', STEP: 'step' };
+
+    const STORAGE_ANIM_SPEED_KEY = 'mlb-animation-speed';
+    const ANIMATION_SPEEDS = { SLOW: 'slow', NORMAL: 'normal', FAST: 'fast' };
+    let animationSpeed = ANIMATION_SPEEDS.NORMAL;
+
+    const STEP_MS_FAST = 2750; // per-row step: current speed becomes Fast
+    const CONTINUOUS_SECONDS_PER_ROW_NORMAL = 6.0; // continuous: current speed is Normal
+
+    let channel = null;
+    let activeTeamIds = new Set();
+    let teamIdToInfo = new Map();
+    let teamIdToStandings = new Map();
+    let lastStandingsFetchMs = 0;
+    let scheduleRows = [];
+    let currentRowIndex = 0;
+    let tickerTimer = null;
+    let refreshTimer = null;
+    let animationMode = ANIMATION_MODES.CONTINUOUS;
+    let rafId = null;
+    let continuousOffset = 0; // px
+    let continuousLastTs = 0;
+    const STORAGE_SPOILER_TEAMS_KEY = 'mlb-spoiler-team-ids';
+    let spoilerTeamIds = new Set();
+    const STORAGE_TEAM_ORDER_KEY = 'mlb-team-order';
+    let teamOrder = [];
+    let teamOrderIndex = new Map();
+    const STORAGE_ORDER_MODE_KEY = 'mlb-order-mode';
+    const ORDER_MODES = { MANUAL: 'manual', START: 'start', INNING: 'inning', STANDINGS: 'standings' };
+    let orderMode = ORDER_MODES.MANUAL;
+    const STORAGE_SCOPE_MODE_KEY = 'mlb-scope-mode';
+    const SCOPE_MODES = { LAST: 'last', TODAY: 'today', LIVE: 'live' };
+    let scopeMode = SCOPE_MODES.LAST;
+    const STORAGE_TZ_KEY = 'mlb-timezone';
+    let timezoneSetting = 'auto'; // 'auto' or IANA TZ id
+    const STORAGE_HOME_TEAM_KEY = 'mlb-home-team-id';
+    let homeTeamId = null; // number or null
+
+    const TEAM_COLORS = {
+      ARI: '#A71930', AZ: '#A71930',
+      ATL: '#CE1141',
+      OAK: '#003831', ATH: '#003831',
+      BAL: '#DF4601',
+      BOS: '#BD3039',
+      CHC: '#0E3386',
+      CHW: '#27251F', CWS: '#27251F',
+      CIN: '#C6011F',
+      CLE: '#00385D', CLEV: '#00385D',
+      COL: '#33006F',
+      DET: '#0C2340',
+      HOU: '#002D62',
+      KC: '#004687', KCR: '#004687',
+      LAA: '#BA0021', ANA: '#BA0021',
+      LAD: '#005A9C', LA: '#005A9C',
+      MIA: '#00A3E0', FLA: '#00A3E0',
+      MIL: '#12284B',
+      MIN: '#002B5C',
+      NYM: '#FF5910',
+      NYY: '#0C2340',
+      OAK: '#003831',
+      PHI: '#E81828',
+      PIT: '#FDB827',
+      SD: '#2F241D', SDP: '#2F241D',
+      SEA: '#0C2C56',
+      SF: '#FD5A1E', SFG: '#FD5A1E',
+      STL: '#C41E3A',
+      TB: '#092C5C', TBR: '#092C5C',
+      TEX: '#003278',
+      TOR: '#134A8E',
+      WSH: '#AB0003', WSN: '#AB0003',
+      NATS: '#AB0003'
+    };
+
+    function getTeamColor(abbr) {
+      const key = String(abbr || '').toUpperCase();
+      return TEAM_COLORS[key] || '#374151';
+    }
+
+    function getContrastColor(hex) {
+      const h = (hex || '').replace('#','');
+      if (h.length !== 6) return '#FFFFFF';
+      const r = parseInt(h.slice(0,2), 16);
+      const g = parseInt(h.slice(2,4), 16);
+      const b = parseInt(h.slice(4,6), 16);
+      const yiq = (r*299 + g*587 + b*114) / 1000;
+      return yiq >= 150 ? '#111111' : '#FFFFFF';
+    }
+
+    function isDisplayMode() {
+      const params = new URLSearchParams(window.location.search);
+      const kraken = (params.get('kraken') || '').toLowerCase();
+      return kraken === '1' || kraken === 'true';
+    }
+
+    function openChannel() {
+      if ('BroadcastChannel' in window) {
+        try { if (!channel) channel = new BroadcastChannel(CHANNEL_NAME); } catch (e) {}
+      }
+    }
+
+    function loadSelectedTeamsFromStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_TEAMS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(arr)) activeTeamIds = new Set(arr.map(v => Number(v)).filter(v => Number.isFinite(v)));
+      } catch (e) { activeTeamIds = new Set(); }
+    }
+
+    function persistSelectedTeams() {
+      try { localStorage.setItem(STORAGE_TEAMS_KEY, JSON.stringify(Array.from(activeTeamIds))); } catch (e) {}
+    }
+
+    function loadSpoilerTeamsFromStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_SPOILER_TEAMS_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(arr)) spoilerTeamIds = new Set(arr.map(v => Number(v)).filter(v => Number.isFinite(v)));
+      } catch (e) { spoilerTeamIds = new Set(); }
+    }
+
+    function persistSpoilerTeams() {
+      try { localStorage.setItem(STORAGE_SPOILER_TEAMS_KEY, JSON.stringify(Array.from(spoilerTeamIds))); } catch (e) {}
+    }
+
+    function loadTeamOrderFromStorage() {
+      try {
+        const raw = localStorage.getItem(STORAGE_TEAM_ORDER_KEY);
+        const arr = raw ? JSON.parse(raw) : [];
+        teamOrder = Array.isArray(arr) ? arr.map(v => Number(v)).filter(Number.isFinite) : [];
+      } catch (e) { teamOrder = []; }
+      rebuildTeamOrderIndex();
+    }
+
+    function persistTeamOrder() {
+      try { localStorage.setItem(STORAGE_TEAM_ORDER_KEY, JSON.stringify(teamOrder)); } catch (e) {}
+    }
+
+    function rebuildTeamOrderIndex() {
+      teamOrderIndex = new Map();
+      for (let i = 0; i < teamOrder.length; i++) teamOrderIndex.set(Number(teamOrder[i]), i);
+    }
+
+    function ensureTeamOrderIncludesAllTeams(teams) {
+      const allIds = teams.map(t => Number(t.id)).filter(Number.isFinite);
+      const setKnown = new Set(allIds);
+      const filtered = teamOrder.filter(id => setKnown.has(Number(id)));
+      const missing = allIds.filter(id => !filtered.includes(id));
+      if (filtered.length === 0) {
+        // Default: timezone-based (east→west), or proximity if a home team is set
+        teamOrder = computeDefaultTeamOrder(teams);
+      } else if (missing.length) {
+        teamOrder = filtered.concat(missing);
+      } else {
+        teamOrder = filtered;
+      }
+      rebuildTeamOrderIndex();
+      persistTeamOrder();
+    }
+
+    function moveIdBeforeTarget(srcId, targetId) {
+      const src = Number(srcId);
+      const tgt = Number(targetId);
+      if (!Number.isFinite(src) || !Number.isFinite(tgt) || src === tgt) return false;
+      const fromIdx = teamOrder.indexOf(src);
+      const toIdx = teamOrder.indexOf(tgt);
+      if (fromIdx === -1 || toIdx === -1) return false;
+      const arr = teamOrder.slice();
+      arr.splice(fromIdx, 1);
+      const newToIdx = arr.indexOf(tgt);
+      arr.splice(newToIdx, 0, src);
+      teamOrder = arr;
+      rebuildTeamOrderIndex();
+      persistTeamOrder();
+      return true;
+    }
+
+    function rankForTeamId(id) {
+      const n = Number(id);
+      if (!Number.isFinite(n)) return Number.POSITIVE_INFINITY;
+      const idx = teamOrderIndex.get(n);
+      return Number.isFinite(idx) ? idx : Number.POSITIVE_INFINITY;
+    }
+
+    async function fetchStandingsIfNeeded() {
+      try {
+        const now = Date.now();
+        if ((now - lastStandingsFetchMs) < 5 * 60 * 1000 && teamIdToStandings.size > 0) return; // cache 5 minutes
+        const url = `${MLB_API_BASE}/standings?leagueId=103,104&season=${new Date().getFullYear()}&standingsTypes=regularSeason&hydrate=team`;
+        const res = await fetch(url, { cache: 'no-store' });
+        const data = await res.json();
+        const recs = [];
+        // statsapi structure: records[] -> teamRecords[] -> team.id, wins, losses, pct
+        const records = Array.isArray(data.records) ? data.records : [];
+        records.forEach(div => {
+          const trs = Array.isArray(div.teamRecords) ? div.teamRecords : [];
+          trs.forEach(tr => {
+            const team = tr.team || {};
+            const id = Number(team.id);
+            const wins = Number(tr.wins);
+            const losses = Number(tr.losses);
+            const pct = Number(tr.pct);
+            if (Number.isFinite(id)) recs.push({ id, wins: Number.isFinite(wins) ? wins : 0, losses: Number.isFinite(losses) ? losses : 0, pct: Number.isFinite(pct) ? pct : (wins + losses > 0 ? wins / (wins + losses) : 0) });
+          });
+        });
+        teamIdToStandings = new Map(recs.map(r => [r.id, r]));
+        lastStandingsFetchMs = now;
+      } catch (e) {
+        // swallow and keep prior standings if any
+      }
+    }
+
+    function standingScoreForTeamId(id) {
+      const n = Number(id);
+      if (!Number.isFinite(n)) return Number.NEGATIVE_INFINITY;
+      const s = teamIdToStandings.get(n);
+      if (!s) return Number.NEGATIVE_INFINITY;
+      // Higher is better: use win pct, then wins as tiebreaker
+      return (Number(s.pct) || 0) * 1000 + (Number(s.wins) || 0);
+    }
+
+    async function fetchTeams() {
+      const url = `${MLB_API_BASE}/teams?sportId=1&activeStatus=Y`;
+      const res = await fetch(url, { cache: 'no-store' });
+      const data = await res.json();
+      const teams = (data && Array.isArray(data.teams)) ? data.teams : [];
+      teamIdToInfo = new Map(teams.map(t => {
+        const abbr = t.abbreviation || (t.fileCode || '').toUpperCase();
+        const meta = (typeof getTeamMetaForAbbr === 'function') ? (getTeamMetaForAbbr(abbr) || {}) : {};
+        const tz = (t && t.venue && (t.venue.timeZone || t.venue.timezone)) || meta.tz || null;
+        const lat = (t && t.venue && t.venue.location && (t.venue.location.lat ?? t.venue.location.latitude)) ?? meta.lat ?? null;
+        const lon = (t && t.venue && t.venue.location && (t.venue.location.lng ?? t.venue.location.lon ?? t.venue.location.longitude)) ?? meta.lon ?? null;
+        return [t.id, {
+          id: t.id,
+          name: t.name,
+          fileCode: t.fileCode,
+          abbreviation: abbr,
+          shortName: t.teamName || t.name,
+          timeZone: tz,
+          lat,
+          lon
+        }];
+      }));
+      // Ensure team order has all ids initialized and persisted
+      ensureTeamOrderIncludesAllTeams(teams);
+      return teams;
+    }
+
+    function formatDateLabel(d) {
+      const dt = new Date(d.getTime());
+      return dt.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    }
+
+    function toISODate(d) {
+      const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      return dt.toISOString().slice(0,10);
+    }
+
+    async function fetchScheduleForDate(date) {
+      const iso = toISODate(date);
+      const url = `${MLB_API_BASE}/schedule?sportId=1&date=${iso}&expand=schedule.linescore`;
+      const res = await fetch(url, { cache: 'no-store' });
+      const data = await res.json();
+      const dates = Array.isArray(data.dates) ? data.dates : [];
+      const games = dates.length ? (dates[0].games || []) : [];
+      return games.map(g => ({ ...g, __dateISO: iso }));
+    }
+
+    function chooseGameTimeLocal(gameUtc) {
+      const dt = new Date(gameUtc);
+      const tz = (typeof getEffectiveDisplayTimeZone === 'function') ? getEffectiveDisplayTimeZone() : undefined;
+      try {
+        if (tz) return dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: tz });
+      } catch (e) {}
+      return dt.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+
+    function includeGameByTeams(game) {
+      if (activeTeamIds.size === 0) return true; // default all
+      const awayId = game.teams?.away?.team?.id;
+      const homeId = game.teams?.home?.team?.id;
+      return activeTeamIds.has(Number(awayId)) || activeTeamIds.has(Number(homeId));
+    }
+
+    async function enrichLiveInning(games) {
+      try {
+        const liveGames = games.filter(g => String(g?.status?.abstractGameState || '').toLowerCase() === 'live');
+        if (!liveGames.length) return;
+        await Promise.all(liveGames.map(async (g) => {
+          try {
+            const url = `${MLB_API_LIVE}/game/${g.gamePk}/feed/live`;
+            const res = await fetch(url, { cache: 'no-store' });
+            const data = await res.json();
+            const ls = (data && data.liveData && data.liveData.linescore) ? data.liveData.linescore : {};
+            const bases = {
+              first: !!(ls && ls.offense && ls.offense.first),
+              second: !!(ls && ls.offense && ls.offense.second),
+              third: !!(ls && ls.offense && ls.offense.third)
+            };
+            const outs = (typeof ls?.outs === 'number') ? ls.outs : 0;
+            const balls = (typeof ls?.balls === 'number') ? ls.balls : 0;
+            const strikes = (typeof ls?.strikes === 'number') ? ls.strikes : 0;
+            g.__liveInfo = {
+              currentInning: ls.currentInning,
+              isTopInning: ls.isTopInning,
+              inningState: ls.inningState,
+              bases,
+              outs,
+              balls,
+              strikes
+            };
+          } catch (e) { /* ignore per-game errors */ }
+        }));
+      } catch (e) { /* ignore batch errors */ }
+    }
+
+    function normalizeRow(game) {
+      const awayTeam = game.teams?.away?.team || {};
+      const homeTeam = game.teams?.home?.team || {};
+      const awayScore = typeof game.teams?.away?.score === 'number' ? game.teams.away.score : null;
+      const homeScore = typeof game.teams?.home?.score === 'number' ? game.teams.home.score : null;
+      const abstractState = (game.status?.abstractGameState || '').trim();
+      const detailedState = (game.status?.detailedState || '').trim();
+      const status = detailedState || abstractState;
+      const statusCode = (game.status?.statusCode || '').trim();
+      const gameTime = chooseGameTimeLocal(game.gameDate);
+      const awayInfo = teamIdToInfo.get(awayTeam.id) || { abbreviation: (awayTeam.abbreviation || '').toUpperCase(), name: awayTeam.name || 'Away' };
+      const homeInfo = teamIdToInfo.get(homeTeam.id) || { abbreviation: (homeTeam.abbreviation || '').toUpperCase(), name: homeTeam.name || 'Home' };
+      const dayLabel = game.__dateISO;
+      // Determine separator: default '-' or live inning with arrow
+      const isLive = (abstractState.toLowerCase() === 'live') || (statusCode.toUpperCase() === 'I') || /in\s*progress/i.test(status) || /top\s+\d+|bottom\s+\d+/i.test(status);
+      const ls = game.__liveInfo || game.linescore || {};
+      let sep = '-';
+      if (isLive) {
+        let inningNum = null;
+        let side = '';
+        const cs = Number(ls.currentInning);
+        if (Number.isFinite(cs)) inningNum = cs;
+        const stateStr = String(ls.inningState || '').toLowerCase();
+        if (typeof ls.isTopInning === 'boolean') side = ls.isTopInning ? 'top' : 'bottom';
+        else if (stateStr.includes('top')) side = 'top';
+        else if (stateStr.includes('bot') || stateStr.includes('bottom')) side = 'bottom';
+
+        if ((!inningNum || !side) && detailedState) {
+          const mTop = detailedState.match(/top\s+(\d{1,2})/i);
+          const mBot = detailedState.match(/bot(?:tom)?\s+(\d{1,2})/i);
+          if (mTop) { inningNum = Number(mTop[1]); side = 'top'; }
+          else if (mBot) { inningNum = Number(mBot[1]); side = 'bottom'; }
+        }
+        if (Number.isFinite(inningNum) && (side === 'top' || side === 'bottom')) {
+          sep = (side === 'top' ? '▲' : '▼') + String(inningNum);
+        }
+      }
+      const bases = (() => {
+        const out = { first: false, second: false, third: false };
+        if (isLive) {
+          const b = (game.__liveInfo && game.__liveInfo.bases) || {};
+          out.first = !!b.first; out.second = !!b.second; out.third = !!b.third;
+        }
+        return out;
+      })();
+      return {
+        id: game.gamePk,
+        when: dayLabel,
+        center: shortStatus(status, statusCode, gameTime, dayLabel),
+        away: { id: awayTeam.id, abbr: awayInfo.abbreviation || awayInfo.name, name: awayInfo.name, score: awayScore },
+        home: { id: homeTeam.id, abbr: homeInfo.abbreviation || homeInfo.name, name: homeInfo.name, score: homeScore },
+        sep,
+        bases,
+        outs: isLive ? (Number((game.__liveInfo && game.__liveInfo.outs)) || 0) : null,
+        balls: isLive ? (Number((game.__liveInfo && game.__liveInfo.balls)) || 0) : null,
+        strikes: isLive ? (Number((game.__liveInfo && game.__liveInfo.strikes)) || 0) : null
+      };
+    }
+
+    function shortStatus(status, code, localTime, isoDate) {
+      const s = (status || '').toLowerCase();
+      const c = (code || '').toUpperCase();
+      if (s.includes('final') || c === 'F' || c === 'C') return finalLabel(isoDate);
+      if (s.includes('postponed') || c === 'D') return 'PPD';
+      if (s.includes('delayed')) return 'DLY';
+      if (s.includes('in progress') || c === 'I' || s.includes('game in progress')) return 'LIVE';
+      // Scheduled: return time if today, otherwise weekday
+      return shortDayOrTime(localTime, isoDate);
+    }
+
+    function shortTime(localTime) {
+      if (!localTime) return '';
+      // Expect strings like "7:05 PM" or "7:05"
+      const m = String(localTime).match(/(\d{1,2}):(\d{2})\s*([AP]M)?/i);
+      if (!m) return localTime;
+      const hh = m[1];
+      const mm = m[2];
+      const ap = (m[3] || '').toLowerCase();
+      return `${hh}:${mm}${ap ? ap[0] : ''}`;
+    }
+
+    function shortDayOrTime(localTime, isoDate) {
+      // If the game is today, show time; else show weekday abbreviation
+      if (isTodayISO(isoDate)) return shortTime(localTime);
+      return dayFromISO(isoDate);
+    }
+
+    function isTodayISO(iso) {
+      try {
+        const d = new Date(iso + 'T00:00:00');
+        const now = new Date();
+        const a = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        const b = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        return a === b;
+      } catch (e) { return false; }
+    }
+
+    function dayFromISO(iso) {
+      try {
+        const d = new Date(iso + 'T00:00:00');
+        const days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+        return days[d.getDay()];
+      } catch (e) { return ''; }
+    }
+
+    function isYesterdayISO(iso) {
+      try {
+        const d = new Date(iso + 'T00:00:00');
+        const now = new Date();
+        const y = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+        return d.getFullYear() === y.getFullYear() && d.getMonth() === y.getMonth() && d.getDate() === y.getDate();
+      } catch (e) { return false; }
+    }
+
+    function isSameWeekISO(iso) {
+      try {
+        const d = new Date(iso + 'T00:00:00');
+        const now = new Date();
+        const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+        const endOfWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + 7);
+        return d >= startOfWeek && d < endOfWeek;
+      } catch (e) { return false; }
+    }
+
+    function monthDayFromISO(iso) {
+      try {
+        const d = new Date(iso + 'T00:00:00');
+        return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      } catch (e) { return ''; }
+    }
+
+    function finalLabel(iso) {
+      try {
+        if (isTodayISO(iso)) return 'Final';
+        if (isYesterdayISO(iso)) return 'Yesterday';
+        if (isSameWeekISO(iso)) return dayFromISO(iso);
+        return monthDayFromISO(iso);
+      } catch (e) { return 'Final'; }
+    }
+
+    function ordinal(n) {
+      try {
+        const num = Math.floor(Number(n));
+        if (!Number.isFinite(num)) return String(n);
+        const s = ['th','st','nd','rd'];
+        const v = num % 100;
+        const suf = (s[(v - 20) % 10] || s[v] || s[0]);
+        return String(num) + suf;
+      } catch (e) { return String(n); }
+    }
+
+    function renderRows(rows, options) {
+      const opts = options || {};
+      const preserveScroll = !!opts.preserveScroll;
+      const anchorId = opts.anchorId;
+      const anchorOffsetPx = Math.max(0, Number(opts.anchorOffsetPx) || 0);
+      const list = document.getElementById('list');
+      const ticker = document.getElementById('ticker');
+      if (!list || !ticker) return;
+      // Rotate last item to top on initial render (no anchor), so first real item appears centered
+      const rowsToRender = (Array.isArray(rows) && rows.length > 1 && (anchorId == null))
+        ? [rows[rows.length - 1], ...rows.slice(0, -1)]
+        : rows;
+      const rowHtml = rowsToRender.map(r => {
+        const subClass = (r.center === 'LIVE') ? 'subtext live' : (r.center === 'PPD') ? 'subtext postponed' : (r.center === 'DLY') ? 'subtext delayed' : 'subtext final';
+        const logoOrPill = (team) => {
+          if (team && Number.isFinite(Number(team.id))) {
+            const id = Number(team.id);
+            const alt = escapeHtml(team.abbr || team.name || 'Team');
+            // return `<img class=\"team-logo\" src=\"https://www.mlbstatic.com/team-cap-on-dark/team-logos/${id}.svg\" alt=\"${alt} logo\" />`;
+            return `<span class=\"teamcell\"><img class=\"team-logo\" src=\"https://www.mlbstatic.com/team-logos/${id}.svg\" alt=\"${alt} logo\" /></span>`;
+          }
+          const bg = getTeamColor(team?.abbr);
+          const fg = getContrastColor(bg);
+          return `<span class=\"teamcell\"><span class=\"abbrpill\" style=\"background:${bg};color:${fg}\">${escapeHtml(team?.abbr || '')}</span></span>`;
+        };
+        const awayScoreHtml = `<span class=\"scorebox\">${escapeHtml(String(r.away.score ?? '-'))}</span>`;
+        const homeScoreHtml = `<span class=\"scorebox\">${escapeHtml(String(r.home.score ?? '-'))}</span>`;
+        const sepVal = (r && typeof r.sep === 'string' && r.sep.length) ? r.sep : '-';
+        let sepHtml = '';
+        if (sepVal === '-') {
+          sepHtml = `<span class=\"sepbox\"><span class=\"sep-dash\">-</span></span>`;
+        } else {
+          const isTop = /^▲/.test(sepVal);
+          const inning = sepVal.replace(/[▲▼]/g, '');
+          const arrow = isTop ? '▲' : '▼';
+          const sideClass = isTop ? 'top' : 'bottom';
+          const inningNumMaybe = parseInt(inning, 10);
+          const inningLabel = Number.isFinite(inningNumMaybe) ? ordinal(inningNumMaybe) : inning;
+          sepHtml = `<span class=\"sepbox ${sideClass}\"><span class=\"sep-arrow\">${arrow}</span><span class=\"sep-inning\">${escapeHtml(inningLabel)}</span></span>`;
+        }
+        const scoreline = `${logoOrPill(r.away)}${awayScoreHtml}${sepHtml}${homeScoreHtml}${logoOrPill(r.home)}`;
+        // Display order: 3B, 2B, 1B (left-to-right) to match common scoreboards
+        const isLiveCenter = (r.center === 'LIVE');
+        const shouldHideScores = spoilerTeamIds.has(Number(r.away.id)) || spoilerTeamIds.has(Number(r.home.id));
+        const outsVal = Number(r?.outs) || 0;
+        const outsLabelText = outsVal === 1 ? 'Out' : 'Outs';
+        const outsHtml = isLiveCenter ? `<span class=\"outs\"><span class=\"outs-num\">${outsVal}</span><span class=\"outs-label\">${outsLabelText}</span></span>` : '';
+        const basesHtml = isLiveCenter ? `<span class=\"bases\"><span class=\"base third${r?.bases?.third ? ' on' : ''}\"></span><span class=\"base second${r?.bases?.second ? ' on' : ''}\"></span><span class=\"base first${r?.bases?.first ? ' on' : ''}\"></span></span>` : '';
+        const pitchHtml = isLiveCenter ? `<span class=\"pitch-count\">${Number(r?.balls) || 0} - ${Number(r?.strikes) || 0}</span>` : '';
+        return `
+        <div class=\"card${shouldHideScores ? ' hide-scores' : ''}\" data-id=\"${r.id}\">\n          <div class=\"scoreline\">${scoreline}</div>\n          <div class=\"${subClass}\">${isLiveCenter ? `${outsHtml}${basesHtml}${pitchHtml}` : escapeHtml(r.center || '')}</div>\n        </div>`;
+      }).join('');
+
+      // Duplicate content in DOM to allow seamless looping in both modes
+      if (rows.length > 0) {
+        list.innerHTML = rowHtml + rowHtml;
+      } else {
+        list.innerHTML = rowHtml;
+      }
+
+      const unitHeight = rows.length * ROW_HEIGHT;
+      const totalHeight = unitHeight * 2; // DOM has two copies when rows.length > 0
+      list.style.height = totalHeight + 'px';
+      ticker.style.position = 'relative';
+      const DESIRED_VISIBLE_ROWS = 3;
+      ticker.style.height = (DESIRED_VISIBLE_ROWS * ROW_HEIGHT) + 'px';
+      if (preserveScroll && rows.length > 0) {
+        // Restore position based on anchor where possible
+        const idx = Number.isFinite(Number(anchorId)) ? rows.findIndex(x => Number(x.id) === Number(anchorId)) : -1;
+        if (animationMode === ANIMATION_MODES.CONTINUOUS) {
+          const i = idx >= 0 ? idx : 0;
+          continuousOffset = i * ROW_HEIGHT + (Number.isFinite(anchorOffsetPx) ? anchorOffsetPx : 0);
+          list.style.transition = 'none';
+          const blockHeight = Math.max(1, unitHeight);
+          const y = - (continuousOffset % blockHeight);
+          list.style.transform = `translateY(${y}px)`;
+        } else {
+          const visibleRows = getVisibleRows();
+          const maxIndex = Math.max(0, rows.length - visibleRows);
+          const i = idx >= 0 ? Math.min(Math.max(0, idx), maxIndex) : 0;
+          currentRowIndex = i;
+          list.style.transition = 'none';
+          list.style.transform = `translateY(${-currentRowIndex * ROW_HEIGHT}px)`;
+        }
+        restartTicker();
+      } else {
+        currentRowIndex = 0;
+        list.style.transition = 'none';
+        list.style.transform = 'translateY(0px)';
+        continuousOffset = 0;
+        restartTicker();
+      }
+    }
+
+    function stopTicker() {
+      if (tickerTimer) { clearInterval(tickerTimer); tickerTimer = null; }
+      if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    }
+
+    function startStepTicker() {
+      const list = document.getElementById('list');
+      const ticker = document.getElementById('ticker');
+      if (!list || !ticker) return;
+      const n = Math.max(0, scheduleRows.length);
+      if (n === 0) return;
+      const stepOnce = () => {
+        const visibleRows = Math.max(1, Math.floor((ticker.clientHeight || ROW_HEIGHT) / ROW_HEIGHT));
+        currentRowIndex = currentRowIndex + 1;
+        list.style.transition = 'transform 600ms ease-out';
+        list.style.transform = `translateY(${-currentRowIndex * ROW_HEIGHT}px)`;
+        // After the transition completes, if we've advanced a full block, rebase without visual jump
+        setTimeout(() => {
+          if (currentRowIndex >= n) {
+            // Rebase back by one block with no transition to keep continuity
+            list.style.transition = 'none';
+            currentRowIndex = currentRowIndex - n;
+            list.style.transform = `translateY(${-currentRowIndex * ROW_HEIGHT}px)`;
+          }
+        }, 620);
+      };
+      // Kick off interval using current speed setting
+      tickerTimer = setInterval(stepOnce, getStepIntervalMs());
+    }
+
+    function startContinuousTicker() {
+      const list = document.getElementById('list');
+      const ticker = document.getElementById('ticker');
+      if (!list || !ticker) return;
+      const blockHeight = scheduleRows.length * ROW_HEIGHT;
+      const visibleHeight = ticker.clientHeight || (3 * ROW_HEIGHT);
+      if (blockHeight <= visibleHeight) return; // no need to scroll if not overflowing
+      const secondsPerRow = getContinuousSecondsPerRow();
+      const pxPerSec = ROW_HEIGHT / secondsPerRow;
+      list.style.transition = 'transform 0ms linear';
+      continuousLastTs = 0;
+      const tick = (ts) => {
+        if (!continuousLastTs) continuousLastTs = ts;
+        const dt = Math.max(0, ts - continuousLastTs) / 1000;
+        continuousLastTs = ts;
+        continuousOffset += dt * pxPerSec;
+        const y = - (continuousOffset % blockHeight);
+        list.style.transform = `translateY(${y}px)`;
+        rafId = requestAnimationFrame(tick);
+      };
+      rafId = requestAnimationFrame(tick);
+    }
+
+    function restartTicker() {
+      stopTicker();
+      if (!scheduleRows.length) return;
+      if (animationMode === ANIMATION_MODES.CONTINUOUS) startContinuousTicker(); else startStepTicker();
+    }
+
+    function escapeHtml(s) {
+      return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    }
+
+    async function refreshScores(options) {
+      try {
+        const opts = options || {};
+        const resetScroll = !!opts.resetScroll;
+        const preserveScrollForThisRefresh = !resetScroll;
+        // Capture current scroll anchor only if preserving position
+        const getScrollAnchor = () => {
+          const out = { id: null, offsetPx: 0 };
+          if (!preserveScrollForThisRefresh) return out;
+          if (!scheduleRows || scheduleRows.length === 0) return out;
+          if (animationMode === ANIMATION_MODES.CONTINUOUS) {
+            const blockHeight = Math.max(1, scheduleRows.length * ROW_HEIGHT);
+            const off = ((continuousOffset % blockHeight) + blockHeight) % blockHeight;
+            const topIdx = Math.floor(off / ROW_HEIGHT);
+            out.id = scheduleRows[topIdx] ? scheduleRows[topIdx].id : null;
+            out.offsetPx = off - (topIdx * ROW_HEIGHT);
+          } else {
+            const anchor = scheduleRows[currentRowIndex] || scheduleRows[0];
+            out.id = anchor ? anchor.id : null;
+            out.offsetPx = 0;
+          }
+          return out;
+        };
+        const anchor = getScrollAnchor();
+        const today = new Date();
+        // 1) Today's games
+        const gamesTodayRaw = await fetchScheduleForDate(today);
+        let gamesToday = gamesTodayRaw.filter(includeGameByTeams);
+
+        // 2) Teams of interest
+        const teamsOfInterest = (activeTeamIds && activeTeamIds.size > 0)
+          ? new Set(Array.from(activeTeamIds))
+          : new Set(Array.from(teamIdToInfo.keys()));
+
+        // 3) Covered teams
+        const coveredTeams = new Set();
+        for (const g of gamesToday) {
+          const awayId = Number(g?.teams?.away?.team?.id);
+          const homeId = Number(g?.teams?.home?.team?.id);
+          if (Number.isFinite(awayId) && teamsOfInterest.has(awayId)) coveredTeams.add(awayId);
+          if (Number.isFinite(homeId) && teamsOfInterest.has(homeId)) coveredTeams.add(homeId);
+        }
+
+        // 4) Build candidate set depending on scope
+        let ordered = [];
+        if (scopeMode === SCOPE_MODES.LIVE) {
+          // Only live games from today
+          gamesToday = gamesToday.filter(g => {
+            const s = String(g?.status?.abstractGameState || '').toLowerCase();
+            const code = String(g?.status?.statusCode || '').toUpperCase();
+            return s === 'live' || code === 'I';
+          });
+          ordered = gamesToday;
+        } else if (scopeMode === SCOPE_MODES.TODAY) {
+          // Only today's games (scheduled, in-progress, final)
+          ordered = gamesToday;
+        } else {
+          // Last: today's first, then backfill each team not covered with last final game
+          const needTeams = new Set(Array.from(teamsOfInterest).filter(id => !coveredTeams.has(id)));
+          const lastGamesMap = new Map();
+          const MAX_LOOKBACK_DAYS = 14;
+          for (let back = 1; needTeams.size > 0 && back <= MAX_LOOKBACK_DAYS; back++) {
+            const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
+            const games = await fetchScheduleForDate(d);
+            for (const g of games) {
+              const awayId = Number(g?.teams?.away?.team?.id);
+              const homeId = Number(g?.teams?.home?.team?.id);
+              const status = String(g?.status?.detailedState || g?.status?.abstractGameState || '').toLowerCase();
+              const code = String(g?.status?.statusCode || '').toUpperCase();
+              const isFinal = status.includes('final') || code === 'F' || code === 'C';
+              if (!isFinal) continue;
+              if (!(needTeams.has(awayId) || needTeams.has(homeId))) continue;
+              if (!lastGamesMap.has(g.gamePk)) lastGamesMap.set(g.gamePk, g);
+              if (needTeams.has(awayId)) needTeams.delete(awayId);
+              if (needTeams.has(homeId)) needTeams.delete(homeId);
+              if (needTeams.size === 0) break;
+            }
+          }
+          const seen = new Set();
+          for (const g of gamesToday) { if (!seen.has(g.gamePk)) { seen.add(g.gamePk); ordered.push(g); } }
+          for (const g of lastGamesMap.values()) { if (!seen.has(g.gamePk)) { seen.add(g.gamePk); ordered.push(g); } }
+        }
+
+        // 6) Sort by selected order mode
+        if (orderMode === ORDER_MODES.STANDINGS) {
+          // ensure standings are fresh before sorting
+          await fetchStandingsIfNeeded();
+        }
+        const manualPriorityForGame = (g) => {
+          const awayId = Number(g?.teams?.away?.team?.id);
+          const homeId = Number(g?.teams?.home?.team?.id);
+          const awayRank = rankForTeamId(awayId);
+          const homeRank = rankForTeamId(homeId);
+          return Math.min(awayRank, homeRank);
+        };
+        const standingsPriorityForGame = (g) => {
+          const awayId = Number(g?.teams?.away?.team?.id);
+          const homeId = Number(g?.teams?.home?.team?.id);
+          // Higher score should come first -> we sort descending by this value, so return negative
+          const away = standingScoreForTeamId(awayId);
+          const home = standingScoreForTeamId(homeId);
+          // Prefer games between top teams, then break ties by start time
+          const maxScore = Math.max(away, home);
+          const minScore = Math.min(away, home);
+          // pack both to favor matchups where both teams are strong
+          return -((maxScore * 1000000) + minScore);
+        };
+        const startTimeForGame = (g) => {
+          // Prefer scheduled start (gameDate) ascending; live/finals follow their original date/time
+          const d = new Date(g.gameDate);
+          const t = d.getTime();
+          return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+        };
+        const inningForGame = (g) => {
+          // Use normalized row building parts if available; otherwise status
+          const ls = g.__liveInfo || g.linescore || {};
+          let inning = Number(ls.currentInning);
+          if (!Number.isFinite(inning)) inning = 0;
+          // Put live games first by big boost, then sort by inning desc
+          const isLive = String(g?.status?.abstractGameState || '').toLowerCase() === 'live' || String(g?.status?.statusCode || '').toUpperCase() === 'I';
+          const boost = isLive ? 1000 : 0;
+          return -(boost + inning); // negative for descending
+        };
+        if (orderMode === ORDER_MODES.START) {
+          ordered.sort((a, b) => startTimeForGame(a) - startTimeForGame(b));
+        } else if (orderMode === ORDER_MODES.INNING) {
+          ordered.sort((a, b) => inningForGame(a) - inningForGame(b));
+        } else if (orderMode === ORDER_MODES.STANDINGS) {
+          ordered.sort((a, b) => standingsPriorityForGame(a) - standingsPriorityForGame(b));
+        } else {
+          ordered.sort((a, b) => manualPriorityForGame(a) - manualPriorityForGame(b));
+        }
+
+        await enrichLiveInning(ordered);
+        const newRows = ordered.map(normalizeRow);
+        scheduleRows = newRows;
+        renderRows(scheduleRows, { preserveScroll: preserveScrollForThisRefresh, anchorId: anchor.id, anchorOffsetPx: anchor.offsetPx });
+      } catch (e) {
+        const list = document.getElementById('list');
+        if (list) list.innerHTML = `<div class=\"card\"><div class=\"center-col\" style=\"grid-column: 1 / -1; width: 100%; text-align:center;\">Failed to load scores</div></div>`;
+      }
+    }
+
+    function startAutoRefresh() {
+      if (refreshTimer) clearInterval(refreshTimer);
+      refreshTimer = setInterval(() => refreshScores({ resetScroll: false }), REFRESH_MS);
+    }
+
+    function renderTeamsPicker(teams) {
+      const list = document.getElementById('teams-list');
+      const search = document.getElementById('team-search');
+      if (!list) return;
+
+      const render = () => {
+        const q = (search.value || '').toLowerCase().trim();
+        const filtered = !q ? teams : teams.filter(t => (
+          (t.name || '').toLowerCase().includes(q) ||
+          (t.teamName || '').toLowerCase().includes(q) ||
+          (t.abbreviation || '').toLowerCase().includes(q) ||
+          (t.fileCode || '').toLowerCase().includes(q)
+        ));
+        const sorted = filtered.slice().sort((a, b) => rankForTeamId(a.id) - rankForTeamId(b.id));
+        list.innerHTML = sorted.map(t => {
+          const id = Number(t.id);
+          const abbr = t.abbreviation || (t.fileCode || '').toUpperCase();
+          const isSelected = activeTeamIds.has(id);
+          const isSpoiler = spoilerTeamIds.has(id);
+          const bg = getTeamColor(abbr);
+          const fg = getContrastColor(bg);
+          return `
+            <div class=\"team-chip\" data-id=\"${id}\">\n              <button class=\"chip-drag\" type=\"button\" draggable=\"true\" aria-label=\"Reorder\">≡</button>\n              <button class=\"chip-select${isSelected ? ' selected' : ''}\" type=\"button\">\n                <span class=\"badge\" style=\"background:${bg};color:${fg};border-color:${bg}\">${abbr}</span>\n                <span>${escapeHtml(t.name)}</span>\n              </button>\n              <button class=\"chip-spoiler${isSpoiler ? ' active' : ''}\" type=\"button\">🚫Spoilers</button>\n            </div>
+          `;
+        }).join('');
+
+        list.querySelectorAll('.chip-select').forEach(el => {
+          el.addEventListener('click', () => {
+            const parent = el.closest('.team-chip');
+            if (!parent) return;
+            const id = Number(parent.getAttribute('data-id'));
+            if (activeTeamIds.has(id)) activeTeamIds.delete(id); else activeTeamIds.add(id);
+            el.classList.toggle('selected', activeTeamIds.has(id));
+            persistSelectedTeams();
+            openChannel();
+            if (channel) {
+              try { channel.postMessage({ selectedTeamIds: Array.from(activeTeamIds), animationMode, spoilerTeamIds: Array.from(spoilerTeamIds) }); } catch (e) {}
+            }
+          });
+        });
+        list.querySelectorAll('.chip-spoiler').forEach(el => {
+          el.addEventListener('click', () => {
+            const parent = el.closest('.team-chip');
+            if (!parent) return;
+            const id = Number(parent.getAttribute('data-id'));
+            if (spoilerTeamIds.has(id)) spoilerTeamIds.delete(id); else spoilerTeamIds.add(id);
+            el.classList.toggle('active', spoilerTeamIds.has(id));
+            persistSpoilerTeams();
+            // Update preview (if in display here, re-render will reflect)
+            renderRows(scheduleRows);
+            openChannel();
+            if (channel) {
+              try { channel.postMessage({ spoilerTeamIds: Array.from(spoilerTeamIds) }); } catch (e) {}
+            }
+          });
+        });
+
+        // Drag-and-drop reordering
+        let dragSrcId = null;
+        list.querySelectorAll('.chip-drag').forEach(handle => {
+          handle.addEventListener('dragstart', (ev) => {
+            const parent = handle.closest('.team-chip');
+            dragSrcId = parent ? parent.getAttribute('data-id') : null;
+            try { ev.dataTransfer.setData('text/plain', dragSrcId || ''); } catch (e) {}
+            if (ev.dataTransfer) ev.dataTransfer.effectAllowed = 'move';
+          });
+          handle.addEventListener('dragend', () => {
+            dragSrcId = null;
+            list.querySelectorAll('.team-chip.drag-over').forEach(ch => ch.classList.remove('drag-over'));
+          });
+        });
+
+        list.querySelectorAll('.team-chip').forEach(chip => {
+          chip.addEventListener('dragover', (ev) => {
+            ev.preventDefault();
+            chip.classList.add('drag-over');
+            if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
+          });
+          chip.addEventListener('dragleave', () => {
+            chip.classList.remove('drag-over');
+          });
+          chip.addEventListener('drop', (ev) => {
+            ev.preventDefault();
+            chip.classList.remove('drag-over');
+            let src = dragSrcId;
+            try { const t = ev.dataTransfer.getData('text/plain'); if (t) src = t; } catch (e) {}
+            const targetId = chip.getAttribute('data-id');
+            if (!src || !targetId || src === targetId) return;
+            const changed = moveIdBeforeTarget(Number(src), Number(targetId));
+            if (changed) {
+              // Re-render list to reflect new order
+              render();
+              // Broadcast to displays
+              openChannel();
+              if (channel) {
+                try { channel.postMessage({ teamOrder: teamOrder.slice() }); } catch (e) {}
+              }
+            }
+          });
+        });
+      };
+
+      render();
+      if (search) search.addEventListener('input', render);
+    }
+
+    function getAnimationModeFromParams() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const raw = (params.get('anim') || params.get('animation') || '').toLowerCase();
+        if (['step','stepped','row','page'].includes(raw)) return ANIMATION_MODES.STEP;
+        if (['continuous','cont','smooth','smoothly'].includes(raw)) return ANIMATION_MODES.CONTINUOUS;
+        return null;
+      } catch (e) { return null; }
+    }
+
+    function loadAnimationMode() {
+      // Locked: Continuous
+      animationMode = ANIMATION_MODES.CONTINUOUS;
+      persistAnimationMode();
+    }
+
+    function persistAnimationMode() {
+      try { localStorage.setItem(STORAGE_ANIM_KEY, animationMode); } catch (e) {}
+    }
+
+    function setAnimationMode(mode) {
+      // Locked: Continuous
+      const next = ANIMATION_MODES.CONTINUOUS;
+      if (animationMode !== next) {
+        animationMode = next;
+        persistAnimationMode();
+        renderRows(scheduleRows);
+      }
+    }
+
+    // ----- Animation Speed -----
+    function loadAnimationSpeed() {
+      // Locked: Normal
+      animationSpeed = ANIMATION_SPEEDS.NORMAL;
+      persistAnimationSpeed();
+    }
+
+    function persistAnimationSpeed() {
+      try { localStorage.setItem(STORAGE_ANIM_SPEED_KEY, animationSpeed); } catch (e) {}
+    }
+
+    function setAnimationSpeed(speed) {
+      // Locked: Normal
+      const allowed = ANIMATION_SPEEDS.NORMAL;
+      if (animationSpeed !== allowed) {
+        animationSpeed = allowed;
+        persistAnimationSpeed();
+        restartTicker();
+      }
+    }
+
+    function getStepIntervalMs() {
+      // Step mode: current (2750ms) is FAST; provide two slower options
+      if (animationSpeed === ANIMATION_SPEEDS.FAST) return STEP_MS_FAST;
+      if (animationSpeed === ANIMATION_SPEEDS.SLOW) return 6000;
+      return 4000; // NORMAL
+    }
+
+    function getContinuousSecondsPerRow() {
+      // Continuous: current (6s) is NORMAL
+      if (animationSpeed === ANIMATION_SPEEDS.SLOW) return 9.0;
+      if (animationSpeed === ANIMATION_SPEEDS.FAST) return 4.0;
+      return CONTINUOUS_SECONDS_PER_ROW_NORMAL;
+    }
+
+    function initializeAnimationModeControls() {
+      // Preferred: dropdown
+      const sel = document.getElementById('anim-mode-select');
+      if (sel) {
+        sel.value = (animationMode === ANIMATION_MODES.STEP) ? ANIMATION_MODES.STEP : ANIMATION_MODES.CONTINUOUS;
+        sel.addEventListener('change', () => {
+          setAnimationMode(sel.value);
+          openChannel();
+          if (channel) {
+            try { channel.postMessage({ animationMode, animationSpeed }); } catch (e) {}
+          }
+        });
+        return;
+      }
+      // Fallback: radios (legacy)
+      const cont = document.getElementById('anim-continuous');
+      const step = document.getElementById('anim-step');
+      if (cont) cont.checked = (animationMode === ANIMATION_MODES.CONTINUOUS);
+      if (step) step.checked = (animationMode === ANIMATION_MODES.STEP);
+      [cont, step].forEach(r => {
+        if (!r) return;
+        r.addEventListener('change', () => {
+          if (r.checked) {
+            setAnimationMode(r.value);
+            openChannel();
+            if (channel) {
+              try { channel.postMessage({ animationMode, animationSpeed }); } catch (e) {}
+            }
+          }
+        });
+      });
+    }
+
+    function initializeAnimationSpeedControls() {
+      // Preferred: dropdown
+      const sel = document.getElementById('anim-speed-select');
+      if (sel) {
+        sel.value = (animationSpeed === ANIMATION_SPEEDS.FAST || animationSpeed === ANIMATION_SPEEDS.SLOW)
+          ? animationSpeed
+          : ANIMATION_SPEEDS.NORMAL;
+        sel.addEventListener('change', () => {
+          setAnimationSpeed(sel.value);
+          openChannel();
+          if (channel) {
+            try { channel.postMessage({ animationSpeed }); } catch (e) {}
+          }
+        });
+        return;
+      }
+      // Fallback: radios (legacy)
+      const slow = document.getElementById('anim-speed-slow');
+      const normal = document.getElementById('anim-speed-normal');
+      const fast = document.getElementById('anim-speed-fast');
+      if (slow) slow.checked = (animationSpeed === ANIMATION_SPEEDS.SLOW);
+      if (normal) normal.checked = (animationSpeed === ANIMATION_SPEEDS.NORMAL);
+      if (fast) fast.checked = (animationSpeed === ANIMATION_SPEEDS.FAST);
+      [slow, normal, fast].forEach(r => {
+        if (!r) return;
+        r.addEventListener('change', () => {
+          if (r.checked) {
+            setAnimationSpeed(r.value);
+            openChannel();
+            if (channel) {
+              try { channel.postMessage({ animationSpeed }); } catch (e) {}
+            }
+          }
+        });
+      });
+    }
+
+    function loadOrderMode() {
+      // Locked: Manual (Home Team)
+      orderMode = ORDER_MODES.MANUAL;
+      persistOrderMode();
+    }
+
+    function persistOrderMode() {
+      try { localStorage.setItem(STORAGE_ORDER_MODE_KEY, orderMode); } catch (e) {}
+    }
+
+    function setOrderMode(mode) {
+      // Locked: Manual (Home Team)
+      const next = ORDER_MODES.MANUAL;
+      if (orderMode !== next) {
+        orderMode = next;
+        persistOrderMode();
+        refreshScores({ resetScroll: true });
+      }
+    }
+
+    function initializeOrderModeControls() {
+      // Preferred: dropdown
+      const sel = document.getElementById('order-select');
+      if (sel) {
+        sel.value = (orderMode in ORDER_MODES) ? orderMode : ORDER_MODES.MANUAL;
+        // Ensure drag handles reflect current selection on init
+        const disableDnDInit = (orderMode !== ORDER_MODES.MANUAL);
+        document.querySelectorAll('.chip-drag').forEach(btn => {
+          btn.disabled = disableDnDInit;
+          btn.style.opacity = disableDnDInit ? '0.5' : '1';
+          btn.style.cursor = disableDnDInit ? 'not-allowed' : 'grab';
+          if (disableDnDInit) btn.removeAttribute('draggable'); else btn.setAttribute('draggable', 'true');
+        });
+        updateHomeTeamControlVisibility();
+        sel.addEventListener('change', () => {
+          setOrderMode(sel.value);
+          openChannel();
+          if (channel) {
+            try { channel.postMessage({ orderMode }); } catch (e) {}
+          }
+          const disableDnD = (orderMode !== ORDER_MODES.MANUAL);
+          document.querySelectorAll('.chip-drag').forEach(btn => {
+            btn.disabled = disableDnD;
+            btn.style.opacity = disableDnD ? '0.5' : '1';
+            btn.style.cursor = disableDnD ? 'not-allowed' : 'grab';
+            if (disableDnD) btn.removeAttribute('draggable'); else btn.setAttribute('draggable', 'true');
+          });
+          updateHomeTeamControlVisibility();
+        });
+        return;
+      }
+      // Fallback: radios (legacy)
+      const manual = document.getElementById('order-manual');
+      const start = document.getElementById('order-start');
+      const inning = document.getElementById('order-inning');
+      const standings = document.getElementById('order-standings');
+      if (manual) manual.checked = (orderMode === ORDER_MODES.MANUAL);
+      if (start) start.checked = (orderMode === ORDER_MODES.START);
+      if (inning) inning.checked = (orderMode === ORDER_MODES.INNING);
+      if (standings) standings.checked = (orderMode === ORDER_MODES.STANDINGS);
+      updateHomeTeamControlVisibility();
+      [manual, start, inning, standings].forEach(r => {
+        if (!r) return;
+        r.addEventListener('change', () => {
+          if (r.checked) {
+            setOrderMode(r.value);
+            openChannel();
+            if (channel) {
+              try { channel.postMessage({ orderMode }); } catch (e) {}
+            }
+            // Disable drag handles when not manual
+            const disableDnD = (orderMode !== ORDER_MODES.MANUAL);
+            document.querySelectorAll('.chip-drag').forEach(btn => {
+              btn.disabled = disableDnD;
+              btn.style.opacity = disableDnD ? '0.5' : '1';
+              btn.style.cursor = disableDnD ? 'not-allowed' : 'grab';
+              if (disableDnD) btn.removeAttribute('draggable'); else btn.setAttribute('draggable', 'true');
+            });
+            updateHomeTeamControlVisibility();
+          }
+        });
+      });
+    }
+
+    function loadScopeMode() {
+      // Locked: Last game
+      scopeMode = SCOPE_MODES.LAST;
+      persistScopeMode();
+    }
+
+    function persistScopeMode() {
+      try { localStorage.setItem(STORAGE_SCOPE_MODE_KEY, scopeMode); } catch (e) {}
+    }
+
+    function setScopeMode(mode) {
+      // Locked: Last game
+      const next = SCOPE_MODES.LAST;
+      if (scopeMode !== next) {
+        scopeMode = next;
+        persistScopeMode();
+        refreshScores({ resetScroll: true });
+      }
+    }
+
+    function initializeScopeModeControls() {
+      // Preferred: dropdown
+      const sel = document.getElementById('scope-select');
+      if (sel) {
+        sel.value = (scopeMode === SCOPE_MODES.TODAY || scopeMode === SCOPE_MODES.LIVE) ? scopeMode : SCOPE_MODES.LAST;
+        sel.addEventListener('change', () => {
+          setScopeMode(sel.value);
+          openChannel();
+          if (channel) {
+            try { channel.postMessage({ scopeMode }); } catch (e) {}
+          }
+        });
+        return;
+      }
+      // Fallback: radios (legacy)
+      const last = document.getElementById('scope-last');
+      const today = document.getElementById('scope-today');
+      const live = document.getElementById('scope-live');
+      if (last) last.checked = (scopeMode === SCOPE_MODES.LAST);
+      if (today) today.checked = (scopeMode === SCOPE_MODES.TODAY);
+      if (live) live.checked = (scopeMode === SCOPE_MODES.LIVE);
+      [last, today, live].forEach(r => {
+        if (!r) return;
+        r.addEventListener('change', () => {
+          if (r.checked) {
+            setScopeMode(r.value);
+            openChannel();
+            if (channel) {
+              try { channel.postMessage({ scopeMode }); } catch (e) {}
+            }
+          }
+        });
+      });
+    }
+
+    // No global spoilers button; spoilers managed per team
+
+    // ----- Timezone and Home Team controls & helpers -----
+    function detectBrowserTimeZone() {
+      try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { return 'UTC'; }
+    }
+
+    function loadTimezoneSetting() {
+      try {
+        const stored = localStorage.getItem(STORAGE_TZ_KEY);
+        if (stored) timezoneSetting = stored;
+      } catch (e) { timezoneSetting = 'auto'; }
+    }
+
+    function persistTimezoneSetting() {
+      try { localStorage.setItem(STORAGE_TZ_KEY, timezoneSetting); } catch (e) {}
+    }
+
+    function setTimezoneSetting(val) {
+      const next = (val && typeof val === 'string') ? val : 'auto';
+      if (timezoneSetting !== next) {
+        timezoneSetting = next;
+        persistTimezoneSetting();
+        if (!homeTeamId) recomputeAndApplyTeamOrderBySettings();
+        refreshScores({ resetScroll: true });
+        openChannel();
+        if (channel) { try { channel.postMessage({ timezoneSetting }); } catch (e) {} }
+      }
+    }
+
+    function getEffectiveDisplayTimeZone() {
+      return (timezoneSetting && timezoneSetting !== 'auto') ? timezoneSetting : detectBrowserTimeZone();
+    }
+
+    function loadHomeTeamSetting() {
+      try {
+        const raw = localStorage.getItem(STORAGE_HOME_TEAM_KEY);
+        const n = raw ? Number(raw) : NaN;
+        homeTeamId = Number.isFinite(n) && n > 0 ? n : null;
+      } catch (e) { homeTeamId = null; }
+    }
+
+    function persistHomeTeamSetting() {
+      try { localStorage.setItem(STORAGE_HOME_TEAM_KEY, homeTeamId ? String(homeTeamId) : ''); } catch (e) {}
+    }
+
+    function setHomeTeamSetting(n) {
+      const id = Number(n);
+      const next = Number.isFinite(id) && id > 0 ? id : null;
+      if (homeTeamId !== next) {
+        homeTeamId = next;
+        persistHomeTeamSetting();
+        recomputeAndApplyTeamOrderBySettings();
+        openChannel();
+        if (channel) { try { channel.postMessage({ homeTeamId }); } catch (e) {} }
+      }
+    }
+
+    function timezoneRank(tz) {
+      const t = String(tz || '').toLowerCase();
+      if (t === 'america/new_york' || t === 'america/toronto') return 4; // Eastern
+      if (t === 'america/chicago') return 3; // Central
+      if (t === 'america/denver' || t === 'america/phoenix') return 2; // Mountain
+      if (t === 'america/los_angeles') return 1; // Pacific
+      return 0;
+    }
+
+    function computeDefaultTeamOrder(teams) {
+      if (homeTeamId) return computeProximityOrder(teams, homeTeamId);
+      return computeTimezoneOrder(teams);
+    }
+
+    function computeTimezoneOrder(teams) {
+      const infos = teams.map(t => ({ id: Number(t.id), name: String(t.name || ''), tz: (teamIdToInfo.get(t.id)?.timeZone) || null }));
+      const withRanks = infos.map(it => ({ ...it, rk: timezoneRank(it.tz) }));
+      withRanks.sort((a, b) => {
+        if (a.rk !== b.rk) return b.rk - a.rk; // east->west
+        return a.name.localeCompare(b.name);
+      });
+      return withRanks.map(x => x.id);
+    }
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const toRad = (v) => v * Math.PI / 180;
+      const R = 6371; // km
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function computeProximityOrder(teams, homeId) {
+      const homeInfo = teamIdToInfo.get(Number(homeId));
+      const hLat = Number(homeInfo?.lat);
+      const hLon = Number(homeInfo?.lon);
+      if (!Number.isFinite(hLat) || !Number.isFinite(hLon)) return computeTimezoneOrder(teams);
+      const scored = teams.map(t => {
+        const info = teamIdToInfo.get(Number(t.id));
+        const lat = Number(info?.lat);
+        const lon = Number(info?.lon);
+        const dist = (Number.isFinite(lat) && Number.isFinite(lon)) ? haversine(hLat, hLon, lat, lon) : Number.POSITIVE_INFINITY;
+        return { id: Number(t.id), name: String(t.name || ''), dist };
+      });
+      scored.sort((a, b) => {
+        if (a.dist !== b.dist) return a.dist - b.dist;
+        return a.name.localeCompare(b.name);
+      });
+      return scored.map(x => x.id);
+    }
+
+    function recomputeAndApplyTeamOrderBySettings() {
+      const allTeams = Array.from(teamIdToInfo.values()).map(v => ({ id: v.id, name: v.name }));
+      if (!allTeams.length) return;
+      teamOrder = computeDefaultTeamOrder(allTeams);
+      rebuildTeamOrderIndex();
+      persistTeamOrder();
+      const isConfigVisible = document.getElementById('config-container')?.classList.contains('show');
+      if (isConfigVisible) {
+        const teamsForPicker = Array.from(teamIdToInfo.values()).map(v => ({ id: v.id, name: v.name, abbreviation: v.abbreviation, fileCode: v.fileCode, teamName: v.shortName }));
+        renderTeamsPicker(teamsForPicker);
+      }
+      openChannel();
+      if (channel) { try { channel.postMessage({ teamOrder: teamOrder.slice() }); } catch (e) {} }
+      refreshScores({ resetScroll: true });
+    }
+
+    function initializeTimezoneControls(teams) {
+      const sel = document.getElementById('timezone-select');
+      if (!sel) return;
+      const browserTz = detectBrowserTimeZone();
+      const uniqueTzs = Array.from(new Set(teams.map(t => teamIdToInfo.get(t.id)?.timeZone).filter(Boolean)));
+      uniqueTzs.sort();
+      sel.innerHTML = '';
+      const optAuto = document.createElement('option');
+      optAuto.value = 'auto';
+      optAuto.textContent = `Auto-detect (${browserTz})`;
+      sel.appendChild(optAuto);
+      uniqueTzs.forEach(tz => {
+        const opt = document.createElement('option');
+        opt.value = tz;
+        opt.textContent = tz;
+        sel.appendChild(opt);
+      });
+      sel.value = (timezoneSetting && (timezoneSetting === 'auto' || uniqueTzs.includes(timezoneSetting))) ? timezoneSetting : 'auto';
+      sel.addEventListener('change', () => setTimezoneSetting(sel.value));
+    }
+
+    function initializeHomeTeamControls(teams) {
+      const sel = document.getElementById('home-team-select');
+      if (!sel) return;
+      sel.innerHTML = '';
+      const none = document.createElement('option');
+      none.value = '';
+      none.textContent = 'None';
+      sel.appendChild(none);
+      const byName = teams.slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      byName.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = String(t.id);
+        const abbr = (teamIdToInfo.get(t.id)?.abbreviation) || '';
+        opt.textContent = `${abbr ? '[' + abbr + '] ' : ''}${t.name}`;
+        sel.appendChild(opt);
+      });
+      sel.value = (homeTeamId && byName.some(t => Number(t.id) === Number(homeTeamId))) ? String(homeTeamId) : '';
+      sel.addEventListener('change', () => setHomeTeamSetting(sel.value));
+    }
+
+    // Approximate team metadata for timezones and ballpark coordinates by team abbreviation
+    const TEAM_META = (() => {
+      const m = {
+        ARI: { tz: 'America/Phoenix', lat: 33.4453, lon: -112.0667 },
+        ATL: { tz: 'America/New_York', lat: 33.8900, lon: -84.4670 },
+        BAL: { tz: 'America/New_York', lat: 39.2830, lon: -76.6217 },
+        BOS: { tz: 'America/New_York', lat: 42.3467, lon: -71.0972 },
+        CHC: { tz: 'America/Chicago', lat: 41.9484, lon: -87.6553 },
+        CWS: { tz: 'America/Chicago', lat: 41.8300, lon: -87.6339 },
+        CIN: { tz: 'America/New_York', lat: 39.0979, lon: -84.5080 },
+        CLE: { tz: 'America/New_York', lat: 41.4962, lon: -81.6852 },
+        COL: { tz: 'America/Denver', lat: 39.7559, lon: -104.9942 },
+        DET: { tz: 'America/New_York', lat: 42.3390, lon: -83.0485 },
+        HOU: { tz: 'America/Chicago', lat: 29.7572, lon: -95.3554 },
+        KC:  { tz: 'America/Chicago', lat: 39.0517, lon: -94.4803 },
+        LAA: { tz: 'America/Los_Angeles', lat: 33.8003, lon: -117.8827 },
+        LAD: { tz: 'America/Los_Angeles', lat: 34.0739, lon: -118.2400 },
+        MIA: { tz: 'America/New_York', lat: 25.7781, lon: -80.2196 },
+        MIL: { tz: 'America/Chicago', lat: 43.0280, lon: -87.9712 },
+        MIN: { tz: 'America/Chicago', lat: 44.9817, lon: -93.2783 },
+        NYM: { tz: 'America/New_York', lat: 40.7570, lon: -73.8458 },
+        NYY: { tz: 'America/New_York', lat: 40.8296, lon: -73.9262 },
+        OAK: { tz: 'America/Los_Angeles', lat: 37.7516, lon: -122.2005 },
+        PHI: { tz: 'America/New_York', lat: 39.9057, lon: -75.1665 },
+        PIT: { tz: 'America/New_York', lat: 40.4469, lon: -80.0057 },
+        SD:  { tz: 'America/Los_Angeles', lat: 32.7073, lon: -117.1573 },
+        SEA: { tz: 'America/Los_Angeles', lat: 47.5914, lon: -122.3325 },
+        SF:  { tz: 'America/Los_Angeles', lat: 37.7786, lon: -122.3893 },
+        STL: { tz: 'America/Chicago', lat: 38.6226, lon: -90.1928 },
+        TB:  { tz: 'America/New_York', lat: 27.7681, lon: -82.6534 },
+        TEX: { tz: 'America/Chicago', lat: 32.7473, lon: -97.0820 },
+        TOR: { tz: 'America/Toronto', lat: 43.6414, lon: -79.3894 },
+        WSH: { tz: 'America/New_York', lat: 38.8730, lon: -77.0074 }
+      };
+      // common alternates
+      m.AZ = m.ARI; m.CHW = m.CWS; m.CLEV = m.CLE; m.KCR = m.KC; m.ANA = m.LAA; m.LA = m.LAD; m.SDP = m.SD; m.TBR = m.TB; m.SFG = m.SF; m.WSN = m.WSH; m.NATS = m.WSH;
+      return m;
+    })();
+
+    function normalizeAbbr(abbr) {
+      const k = String(abbr || '').toUpperCase();
+      if (TEAM_META[k]) return k;
+      const alt = { CHW: 'CWS', CLEV: 'CLE', KCR: 'KC', ANA: 'LAA', LA: 'LAD', SDP: 'SD', TBR: 'TB', SFG: 'SF', WSN: 'WSH', NATS: 'WSH', AZ: 'ARI' };
+      return alt[k] || k;
+    }
+
+    function getTeamMetaForAbbr(abbr) {
+      const k = normalizeAbbr(abbr);
+      return TEAM_META[k];
+    }
+
+    function showDisplay() {
+      document.getElementById('config-container').classList.remove('show');
+      const display = document.getElementById('display');
+      display.style.display = 'grid';
+    }
+
+    function showConfig() {
+      document.getElementById('config-container').classList.add('show');
+      document.getElementById('display').style.display = 'none';
+    }
+
+    function getRowHeight() {
+      const val = getComputedStyle(document.documentElement).getPropertyValue('--row-h').trim();
+      const n = parseInt(val, 10);
+      return Number.isFinite(n) ? n : 48;
+    }
+    function getVisibleRows() { return Math.max(1, Math.floor((document.getElementById('ticker').clientHeight || ROW_HEIGHT) / ROW_HEIGHT)); }
+
+    async function initializeApp() {
+      loadSelectedTeamsFromStorage();
+      loadAnimationMode();
+      loadAnimationSpeed();
+      loadSpoilerTeamsFromStorage();
+      loadTeamOrderFromStorage();
+      loadOrderMode();
+      loadScopeMode();
+      loadTimezoneSetting();
+      loadHomeTeamSetting();
+      const displayMode = isDisplayMode();
+
+      if (displayMode) {
+        showDisplay();
+        openChannel();
+        if (channel) {
+          channel.onmessage = (event) => {
+            const data = event.data || {};
+            if (Array.isArray(data.selectedTeamIds)) {
+              activeTeamIds = new Set(data.selectedTeamIds.map(Number));
+              persistSelectedTeams();
+              refreshScores({ resetScroll: true });
+            }
+            // Ignore external changes to locked settings
+            if (Array.isArray(data.spoilerTeamIds)) {
+              spoilerTeamIds = new Set(data.spoilerTeamIds.map(Number));
+              persistSpoilerTeams();
+              renderRows(scheduleRows);
+            }
+            if (Array.isArray(data.teamOrder)) {
+              teamOrder = data.teamOrder.map(Number).filter(Number.isFinite);
+              rebuildTeamOrderIndex();
+              persistTeamOrder();
+              // resort rows by priority
+              renderRows(scheduleRows);
+              refreshScores({ resetScroll: true });
+            }
+            // Ignore external changes to locked settings
+            if (typeof data.timezoneSetting === 'string') {
+              timezoneSetting = data.timezoneSetting;
+              persistTimezoneSetting();
+              refreshScores({ resetScroll: true });
+            }
+            if (Number.isFinite(Number(data.homeTeamId)) || data.homeTeamId === null) {
+              homeTeamId = (data.homeTeamId === null) ? null : Number(data.homeTeamId);
+              persistHomeTeamSetting();
+              recomputeAndApplyTeamOrderBySettings();
+              applyDefaultHomeTeamIfMissing();
+            }
+          };
+        }
+        await fetchTeams();
+        applyDefaultHomeTeamIfMissing();
+        await refreshScores();
+        startAutoRefresh();
+        // Per-team spoilers reflected during rendering
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') refreshScores();
+        });
+        window.addEventListener('resize', () => { ROW_HEIGHT = getRowHeight(); renderRows(scheduleRows); });
+      } else {
+        showConfig();
+        const teams = await fetchTeams();
+        applyDefaultHomeTeamIfMissing();
+        initializeTimezoneControls(teams);
+        initializeHomeTeamControls(teams);
+        renderTeamsPicker(teams);
+        // Locked controls: skip initializing hidden selects
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', initializeApp);
+
+    function getTeamIdByAbbr(abbr) {
+      const target = String(abbr || '').toUpperCase();
+      for (const [id, info] of teamIdToInfo.entries()) {
+        if (String(info?.abbreviation || '').toUpperCase() === target) return Number(id);
+      }
+      return null;
+    }
+
+    function getDefaultHomeTeamAbbrForTimeZone(tz) {
+      const t = String(tz || '').toLowerCase();
+      if (t === 'america/los_angeles' || t === 'america/vancouver' || t === 'america/tijuana') return 'LAD'; // Pacific
+      if (t === 'america/phoenix') return 'ARI'; // Arizona (no DST)
+      if (t === 'america/denver' || t === 'america/edmonton') return 'COL'; // Mountain
+      if (t === 'america/chicago' || t === 'america/winnipeg') return 'CHC'; // Central
+      if (
+        t === 'america/new_york' || t === 'america/toronto' || t === 'america/detroit' ||
+        t === 'america/indiana/indianapolis' || t === 'america/montreal' || t === 'america/kentucky/louisville'
+      ) return 'NYY'; // Eastern
+      // Fallback by rank
+      const rk = (typeof timezoneRank === 'function') ? timezoneRank(tz) : 0;
+      if (rk === 1) return 'LAD';
+      if (rk === 2) return 'COL';
+      if (rk === 3) return 'CHC';
+      if (rk === 4) return 'NYY';
+      return null;
+    }
+
+    function pickDefaultHomeTeamIdForEffectiveTz() {
+      const tz = getEffectiveDisplayTimeZone();
+      const abbr = getDefaultHomeTeamAbbrForTimeZone(tz);
+      if (!abbr) return null;
+      return getTeamIdByAbbr(abbr);
+    }
+
+    function applyDefaultHomeTeamIfMissing() {
+      if (homeTeamId && Number.isFinite(Number(homeTeamId))) return;
+      const defId = pickDefaultHomeTeamIdForEffectiveTz();
+      if (Number.isFinite(Number(defId))) {
+        setHomeTeamSetting(defId);
+        const sel = document.getElementById('home-team-select');
+        if (sel) sel.value = String(defId);
+      }
+    }
+
+    function updateHomeTeamControlVisibility() {
+      const sel = document.getElementById('home-team-select');
+      if (!sel) return;
+      const container = sel.closest('.controls');
+      if (!container) return;
+      container.style.display = 'flex';
+    }
+
+    function resetToDefaults() {
+      try {
+        // Clear storage
+        localStorage.removeItem(STORAGE_TEAMS_KEY);
+        localStorage.removeItem(STORAGE_SPOILER_TEAMS_KEY);
+        localStorage.removeItem(STORAGE_TEAM_ORDER_KEY);
+        localStorage.removeItem(STORAGE_ANIM_KEY);
+        localStorage.removeItem(STORAGE_ANIM_SPEED_KEY);
+        localStorage.removeItem(STORAGE_ORDER_MODE_KEY);
+        localStorage.removeItem(STORAGE_SCOPE_MODE_KEY);
+        localStorage.removeItem(STORAGE_TZ_KEY);
+        localStorage.removeItem(STORAGE_HOME_TEAM_KEY);
+      } catch (e) {}
+
+      // Reset in-memory state
+      activeTeamIds = new Set();
+      spoilerTeamIds = new Set();
+      animationMode = ANIMATION_MODES.CONTINUOUS;
+      animationSpeed = ANIMATION_SPEEDS.NORMAL;
+      orderMode = ORDER_MODES.MANUAL;
+      scopeMode = SCOPE_MODES.LAST;
+      timezoneSetting = 'auto';
+      homeTeamId = null;
+
+      // Recompute default team order
+      const allTeams = Array.from(teamIdToInfo.values()).map(v => ({ id: v.id, name: v.name }));
+      if (allTeams.length) {
+        teamOrder = computeDefaultTeamOrder(allTeams);
+        rebuildTeamOrderIndex();
+      } else {
+        teamOrder = [];
+        rebuildTeamOrderIndex();
+      }
+
+      // Persist defaults
+      persistSelectedTeams();
+      persistSpoilerTeams();
+      persistAnimationMode();
+      persistAnimationSpeed();
+      persistOrderMode();
+      persistScopeMode();
+      persistTimezoneSetting();
+      persistHomeTeamSetting();
+      persistTeamOrder();
+
+      // Update UI controls
+      const animModeSel = document.getElementById('anim-mode-select');
+      if (animModeSel) animModeSel.value = ANIMATION_MODES.CONTINUOUS;
+      const animSpeedSel = document.getElementById('anim-speed-select');
+      if (animSpeedSel) animSpeedSel.value = ANIMATION_SPEEDS.NORMAL;
+      const scopeSel = document.getElementById('scope-select');
+      if (scopeSel) scopeSel.value = SCOPE_MODES.LAST;
+      const orderSel = document.getElementById('order-select');
+      if (orderSel) orderSel.value = ORDER_MODES.MANUAL;
+      const homeSel = document.getElementById('home-team-select');
+      if (homeSel) homeSel.value = '';
+
+      // Re-render team picker
+      const teamsForPicker = Array.from(teamIdToInfo.values()).map(v => ({ id: v.id, name: v.name, abbreviation: v.abbreviation, fileCode: v.fileCode, teamName: v.shortName }));
+      renderTeamsPicker(teamsForPicker);
+
+      // Apply default home team if applicable and update select
+      applyDefaultHomeTeamIfMissing();
+      if (homeSel) homeSel.value = homeTeamId ? String(homeTeamId) : '';
+
+      // Broadcast to any displays
+      openChannel();
+      if (channel) {
+        try {
+          channel.postMessage({
+            selectedTeamIds: Array.from(activeTeamIds),
+            animationMode,
+            animationSpeed,
+            spoilerTeamIds: Array.from(spoilerTeamIds),
+            teamOrder: teamOrder.slice(),
+            orderMode,
+            scopeMode,
+            timezoneSetting,
+            homeTeamId
+          });
+        } catch (e) {}
+      }
+
+      // Refresh data/display
+      refreshScores({ resetScroll: true });
+    }
+  </script>
+</body>
+
+</html>
+
+
